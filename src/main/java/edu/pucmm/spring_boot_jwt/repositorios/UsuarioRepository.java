@@ -1,4 +1,4 @@
-package edu.pucmm.spring_boot_jwt.entidades.repositorios;
+package edu.pucmm.spring_boot_jwt.repositorios;
 
 import edu.pucmm.spring_boot_jwt.entidades.Usuario;
 import org.springframework.data.jpa.repository.JpaRepository;
