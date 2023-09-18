@@ -1,95 +1,100 @@
 package edu.pucmm.spring_boot_jwt.config;
 
+import edu.pucmm.spring_boot_jwt.servicios.JwtService;
+import edu.pucmm.spring_boot_jwt.servicios.UsuarioService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+/*import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;*/
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Component
 public class JWTAutorizacionFilter extends OncePerRequestFilter {
 
-    private final String HEADER = "Authorization";
-    private final String PREFIX = "Bearer ";
-    @Value("${token_jwt}")
-    String SECRET = "llave_secreta_aqui_asdasd_adadsasdas_asdasdasdas_1231231_asdasdsa_asdasdasdasd";
-
-    @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-        System.out.println("entrando al filtro de autorización local....");
-        System.out.println("Servlet Path: "+request.getServletPath());
-        System.out.println("Query String: "+request.getQueryString());
-        if(request.getServletPath().startsWith("/api/auth")){
-            filterChain.doFilter(request, response);
-            return;
-        }
-        
-        if(request.getServletPath().startsWith("/api/")){
-            if (existeJWTToken(request, response)) {
-                Claims claims = validateToken(request);
-                if (claims.get("authorities") != null) {
-                    setUpSpringAuthentication(claims);
-                } else {
-                    SecurityContextHolder.clearContext();
-                }
-                filterChain.doFilter(request, response);
-            }else{
-                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-                ((HttpServletResponse) response).sendError(HttpServletResponse.SC_FORBIDDEN, "Sin permisos");
-                return;
-            }
-
-        }
-        filterChain.doFilter(request, response);
-    }
-
-    /**
-     * 
-     * @param request
-     * @return
-     */
-    private Claims validateToken(HttpServletRequest request) {
-        System.out.println("El SECRET es: "+SECRET);
-        String jwtToken = request.getHeader(HEADER).replace(PREFIX, "");
-        return Jwts.parser().setSigningKey(SECRET.getBytes()).parseClaimsJws(jwtToken).getBody();
-    }
+    private JwtService jwtService;
+    private UsuarioService userDetailsService;
 
     /**
      *
-     * @param claims
+     * @param jwtService
+     * @param userDetailsService
      */
-    private void setUpSpringAuthentication(Claims claims) {
-
-        List authorities = (List) claims.get("roles");
-        List<SimpleGrantedAuthority> listaAuto = new ArrayList<>();
-        listaAuto.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
-
-        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(claims.getSubject(), null,listaAuto);
-        SecurityContextHolder.getContext().setAuthentication(auth);
-
+    public JWTAutorizacionFilter(JwtService jwtService, UsuarioService userDetailsService) {
+        this.jwtService = jwtService;
+        this.userDetailsService = userDetailsService;
     }
 
     /**
-     * 
+     * Filtro utilizado para validar el
      * @param request
-     * @param res
-     * @return
+     * @param response
+     * @param filterChain
+     * @throws ServletException
+     * @throws IOException
      */
-    private boolean existeJWTToken(HttpServletRequest request, HttpServletResponse res) {
-        String authenticationHeader = request.getHeader(HEADER);
-        if (authenticationHeader == null || !authenticationHeader.startsWith(PREFIX))
-            return false;
-        return true;
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+        String authHeader = request.getHeader("Authorization");
+        String token = null;
+        String username = null;
+
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7);
+            username = jwtService.extractUsername(token);
+        }
+
+        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+
+            //Puedo traer los roles desde la base datos, pero en un esquema JWT se quiere ser descentralizado
+            //UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+
+
+            //Obtengo los roles directamente de los Claims
+            String roles = jwtService.extractClaim(token, "roles");
+
+            List<GrantedAuthority> grantedAuthorities = new ArrayList<>();
+            for (String role : roles.split(",")) {
+                logger.info("Role Filtro : "+role);
+                grantedAuthorities.add(new SimpleGrantedAuthority(role));
+            }
+
+            logger.info("Usuario del JWT: "+jwtService.extractUsername(token));
+            UserDetails userDetails = new User(jwtService.extractUsername(token),"null",true, true, true, true, grantedAuthorities);
+
+            if (jwtService.validateToken(token)) {
+
+                //En caso que busquemos los roles desde la base de datos.
+                //UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+
+                //Pasando directamente
+                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(userDetails, null, grantedAuthorities);
+
+                //
+                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authToken);
+            }
+        }
+        filterChain.doFilter(request, response);
     }
 
 }
