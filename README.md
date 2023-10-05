@@ -7,3 +7,6 @@ la otra con estado.
 * Java 17
 * Spring Boot 3.1.3
 * Spring Security 6.
+
+Para ejecutar directamente de la imagen Docker con el siguiente comando:
+`docker run --rm -it -p 8080:8080 vacax/springboot-jwt`
