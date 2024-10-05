@@ -13,6 +13,12 @@ Para ejecutar directamente de la imagen Docker con el siguiente comando:
 docker run --rm -it -p 8080:8080 vacax/springboot-jwt
 ```
 
+o compilando la imagen:
+
+```
+docker build -t springboot-jwt . && docker run --rm -p 8080:8080 springboot-jwt
+```
+
 o ejecutar la tarea de Gradle:
 ```
 ./gradlew bootjar
